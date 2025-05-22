@@ -22,6 +22,10 @@ from ksim.actuators import NoiseType, StatefulActuators
 from ksim.types import Metadata, PhysicsData
 from ksim.utils.mujoco import get_ctrl_data_idx_by_name
 
+from ksim.utils.validators import (
+    norm_validator,
+)
+
 logger = logging.getLogger(__name__)
 
 NUM_JOINTS = 20
