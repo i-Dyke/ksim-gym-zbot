@@ -81,6 +81,26 @@ class JointPositionPenalty(ksim.JointDeviationPenalty):
             scale_by_curriculum=scale_by_curriculum,
         )
 
+@attrs.define(frozen=True, kw_only=True)
+class SteadyTorsoPenalty(ksim.LinkJerkPenalty):
+    """Penalty for how fast the robot is accelerating in the z-direction."""
+    
+    norm: xax.NormType = attrs.field(default="l2", validator=norm_validator)
+   
+    def get_reward(self, trajectory: ksim.Trajectory) -> Array:        
+        pos = trajectory.xpos[..., 1:, :]
+
+        pos_zp = jnp.pad(pos, ((3, 0), (0, 0), (0, 0)), mode="edge")
+        done = jnp.pad(trajectory.done[..., :-1], ((3, 0),), mode="edge")[..., None]
+        
+        vel = jnp.where(done, 0.0, jnp.linalg.norm(pos_zp[..., 1:, :, :] - pos_zp[..., :-1, :, :], axis=-1))
+        acc = jnp.where(done[..., 1:, :], 0.0, vel[..., 1:, :] - vel[..., :-1, :])
+        acc_z = acc[..., 1:, 2] # Pad to return to the desired shape after dropping x, y components.
+        
+        penalty = xax.get_norm(acc_z, self.norm)
+        return penalty
+
+
 
 class Actor(eqx.Module):
     """Actor for the walking task."""
@@ -649,6 +669,11 @@ class ZbotWalkingTask(ksim.PPOTask[ZbotWalkingTaskConfig]):
                 names=[name for name, _ in ZEROS],
                 scale=-0.1,
             ),
+            SteadyTorsoPenalty(
+                scale=-0.05, scale_by_curriculum=True
+            )
+            
+            ,
         ]
 
     def get_terminations(self, physics_model: ksim.PhysicsModel) -> list[ksim.Termination]:
